@@ -7,3 +7,4 @@ config easytier
 	option interface_netmask '255.0.0.0'
 	option web_enabled '0'
 	option webbin '/usr/bin/easytier-web'
+	option openwrt_ipv6_udp_fix '1'

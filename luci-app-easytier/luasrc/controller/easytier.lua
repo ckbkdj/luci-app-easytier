@@ -2,6 +2,9 @@
 module("luci.controller.easytier", package.seeall)
 local i18n = require "luci.i18n"
 
+local OPENWRT_IPV6_FIX_REPO = "ckbkdj/EasyTier"
+local OPENWRT_IPV6_FIX_TAG = "v2.6.4-openwrt-ipv6fix.1"
+
 -- 安全执行命令并返回结果
 local function safe_exec(cmd)
     local handle = io.popen(cmd)
@@ -917,6 +920,16 @@ local function detect_arch()
 	return cpucore
 end
 
+local function resolve_release_source(arch, requested_version)
+	local uci = require "luci.model.uci".cursor()
+	local use_fix = uci:get_first("easytier", "easytier", "openwrt_ipv6_udp_fix")
+	if use_fix == nil or use_fix == "" then use_fix = "1" end
+	if arch == "aarch64" and use_fix == "1" then
+		return OPENWRT_IPV6_FIX_REPO, OPENWRT_IPV6_FIX_TAG, true
+	end
+	return "EasyTier/EasyTier", requested_version, false
+end
+
 -- 检查依赖
 local function check_dependencies()
 	local arch = detect_arch()
@@ -1030,7 +1043,7 @@ function download_easytier()
 		return
 	end
 	
-	local version = req_data.version
+	local requested_version = req_data.version
 	
 	-- 1. 检查依赖和架构
 	local ok, arch_or_error = check_dependencies()
@@ -1040,6 +1053,7 @@ function download_easytier()
 	end
 	
 	local arch = arch_or_error
+	local release_repo, version, using_openwrt_fix = resolve_release_source(arch, requested_version)
 	local proxies = get_github_proxies()
 	local download_dir = "/tmp/easytier_download"
 	local zip_file = download_dir .. "/easytier-linux-" .. arch .. "-" .. version .. ".zip"
@@ -1082,7 +1096,7 @@ function download_easytier()
 			return
 		end
 		
-		download_url = proxy .. "https://github.com/EasyTier/EasyTier/releases/download/" .. version .. "/easytier-linux-" .. arch .. "-" .. version .. ".zip"
+		download_url = proxy .. "https://github.com/" .. release_repo .. "/releases/download/" .. version .. "/easytier-linux-" .. arch .. "-" .. version .. ".zip"
 		
 		-- 删除之前的失败文件
 		os.execute("rm -f " .. zip_file)
@@ -1120,12 +1134,15 @@ function download_easytier()
 					local subdir = handle:read("*a"):match("^%s*(.-)%s*$")
 					handle:close()
 					
+					local binary_dir = extract_dir
 					if subdir and subdir ~= "" then
-						core_file = subdir .. "/easytier-core"
-						cli_file = subdir .. "/easytier-cli"
-						web_file = subdir .. "/easytier-web-embed"
-						
-						local files_ok = nixio.fs.access(core_file) and nixio.fs.access(cli_file)
+						binary_dir = subdir
+					end
+					core_file = binary_dir .. "/easytier-core"
+					cli_file = binary_dir .. "/easytier-cli"
+					web_file = binary_dir .. "/easytier-web-embed"
+					
+					local files_ok = nixio.fs.access(core_file) and nixio.fs.access(cli_file)
 						if arch ~= "mips" and arch ~= "mipsel" then
 							files_ok = files_ok and nixio.fs.access(web_file)
 						end
@@ -1154,10 +1171,9 @@ function download_easytier()
 								end
 							end
 							
-							if test_ok then
-								download_success = true
-								break
-							end
+						if test_ok then
+							download_success = true
+							break
 						end
 					end
 				end
@@ -1230,7 +1246,7 @@ function download_easytier()
 	luci.http.write_json({
 		success = true,
 		progress = 100,
-		message = i18n.translate("Download and installation completed")
+		message = i18n.translate("Download and installation completed") .. (using_openwrt_fix and " [OpenWrt IPv6 UDP/WG fix]" or "")
 	})
 end
 

@@ -3,6 +3,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=easytier
 PKG_VERSION:=$(or $(EASYTIER_VERSION),2.6.4)
+PKG_RELEASE:=2
 
 ifeq ($(ARCH),mipsel)
 	APP_ARCH:=mipsel
@@ -31,6 +32,19 @@ endif
 ifeq ($(ARCH),x86_64)
 	APP_ARCH:=x86_64
 endif
+
+RELEASE_REPO:=$(or $(EASYTIER_RELEASE_REPO),EasyTier/EasyTier)
+RELEASE_TAG:=$(or $(EASYTIER_RELEASE_TAG),v$(PKG_VERSION))
+ifeq ($(APP_ARCH),aarch64)
+ifneq ($(strip $(EASYTIER_OPENWRT_AARCH64_FIX_REPO)),)
+	RELEASE_REPO:=$(EASYTIER_OPENWRT_AARCH64_FIX_REPO)
+endif
+ifneq ($(strip $(EASYTIER_OPENWRT_AARCH64_FIX_TAG)),)
+	RELEASE_TAG:=$(EASYTIER_OPENWRT_AARCH64_FIX_TAG)
+endif
+endif
+RELEASE_ARCHIVE:=easytier-linux-$(APP_ARCH)-$(RELEASE_TAG).zip
+RELEASE_URL:=https://github.com/$(RELEASE_REPO)/releases/download/$(RELEASE_TAG)/$(RELEASE_ARCHIVE)
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
 
@@ -64,9 +78,14 @@ endef
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
 	if [ ! -f $(PKG_BUILD_DIR)/easytier-core ]; then \
-		wget https://github.com/EasyTier/EasyTier/releases/download/v$(PKG_VERSION)/$(PKG_NAME)-linux-$(APP_ARCH)-v$(PKG_VERSION).zip -O $(PKG_BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION).zip; \
-		unzip -o -j $(PKG_BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION).zip -d $(PKG_BUILD_DIR); \
-		rm -f $(PKG_BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION).zip; \
+		echo "Downloading EasyTier from $(RELEASE_URL)"; \
+		wget "$(RELEASE_URL)" -O $(PKG_BUILD_DIR)/$(RELEASE_ARCHIVE); \
+		test -s $(PKG_BUILD_DIR)/$(RELEASE_ARCHIVE); \
+		unzip -o -j $(PKG_BUILD_DIR)/$(RELEASE_ARCHIVE) -d $(PKG_BUILD_DIR); \
+		rm -f $(PKG_BUILD_DIR)/$(RELEASE_ARCHIVE); \
+		test -s $(PKG_BUILD_DIR)/easytier-core; \
+		test -s $(PKG_BUILD_DIR)/easytier-cli; \
+		test -s $(PKG_BUILD_DIR)/easytier-web-embed; \
 	fi
 endef
 

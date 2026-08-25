@@ -441,6 +441,13 @@ log:value("info", translate("Info"))
 log:value("debug", translate("Debug"))
 log:value("trace", translate("Trace"))
 
+openwrt_ipv6_udp_fix = s:taboption("privacy", Flag, "openwrt_ipv6_udp_fix", translate("Use OpenWrt IPv6 UDP/WG Fix Build"),
+	translate("On aarch64 OpenWrt, use the patched EasyTier v2.6.4 build for package/runtime downloads. "
+		.. "It preserves the IPv6 address that received a UDP/WireGuard packet as the reply source address. "
+		.. "Disable this only if you intentionally want to return to the official release binary."))
+openwrt_ipv6_udp_fix.default = "1"
+openwrt_ipv6_udp_fix.rmempty = false
+
 -- Network Configuration Options
 auto_config_interface = s:taboption("privacy", Flag, "auto_config_interface", translate("Auto Configure Interface"),
         translate("Automatically create and configure the EasyTier network interface"))
