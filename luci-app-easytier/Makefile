@@ -4,12 +4,18 @@
 # This is free software, licensed under the Apache License, Version 2.0 .
 #
 
-# Load the shared EasyTier version before rules.mk changes MAKEFILE_LIST.
+# Load the shared EasyTier/LuCI versions before rules.mk changes MAKEFILE_LIST.
 -include $(dir $(lastword $(MAKEFILE_LIST)))../version.mk
 include $(TOPDIR)/rules.mk
 
+# The LuCI application follows the EasyTier core version.
 PKG_VERSION:=$(or $(EASYTIER_VERSION),2.6.4)
-PKG_RELEASE:=3
+PKG_RELEASE:=4
+
+# luci.mk assigns translation package VERSION from PKG_PO_VERSION, not
+# PKG_VERSION. Keep it on the LuCI versioning scheme so existing newer LuCI
+# translation packages are not treated as newer than this fixed package.
+PKG_PO_VERSION:=$(or $(EASYTIER_LUCI_PO_VERSION),26.237.86399~ipv6fix2)
 
 LUCI_TITLE:=LuCI support for EasyTier
 LUCI_DEPENDS:=+kmod-tun +luci-compat
