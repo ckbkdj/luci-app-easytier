@@ -1,0 +1,63 @@
+name: Start fixed OpenWrt 24.10.6 build
+
+on:
+  push:
+    branches:
+      - fix/24.10.6-ipv6-udp-source
+    paths:
+      - .github/workflows/start-24.10.6-fixed-build.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    env:
+      CORE_REPO: ckbkdj/EasyTier
+      CORE_TAG: v2.6.4-openwrt-ipv6fix.2
+      TARGET_BRANCH: fix/24.10.6-ipv6-udp-source
+      RELEASE_TAG: v2.6.4-openwrt-ipv6fix.2-openwrt-24.10.6
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Wait for patched multiarch EasyTier release
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(aarch64 x86_64 arm armv7)
+          for attempt in $(seq 1 90); do
+            json="$(gh api "repos/${CORE_REPO}/releases/tags/${CORE_TAG}" 2>/dev/null || true)"
+            if [ -n "$json" ]; then
+              ok=1
+              for arch in "${required[@]}"; do
+                name="easytier-linux-${arch}-${CORE_TAG}.zip"
+                if ! jq -e --arg n "$name" '.assets[] | select(.name == $n)' >/dev/null <<<"$json"; then
+                  echo "waiting for $name"
+                  ok=0
+                fi
+              done
+              if [ "$ok" = 1 ]; then
+                echo "patched release is ready"
+                exit 0
+              fi
+            else
+              echo "release ${CORE_TAG} is not published yet"
+            fi
+            sleep 60
+          done
+          echo "timed out waiting for patched EasyTier release" >&2
+          exit 1
+
+      - name: Dispatch OpenWrt 24.10.6 + SNAPSHOT matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/build.yml/dispatches" \
+            -f ref="$TARGET_BRANCH" \
+            -f "inputs[tag]=$RELEASE_TAG" \
+            -f "inputs[text]=EasyTier v2.6.4 IPv6 UDP/WireGuard source-address fix; OpenWrt 24.10.6 and SNAPSHOT multi-architecture build."
+          echo "dispatched build.yml on ${TARGET_BRANCH}"
