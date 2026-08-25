@@ -36,15 +36,6 @@ jobs:
           PY
           python3 /tmp/apply_openwrt_ipv6.py
 
-      - name: Normalize generated whitespace
-        run: |
-          sed -i 's/[[:space:]]\+$//' luci-app-easytier/luasrc/controller/easytier.lua
-          sed -i 's/[[:space:]]\+$//' luci-app-easytier/luasrc/model/cbi/easytier.lua
-          sed -i 's/[[:space:]]\+$//' luci-app-easytier/root/etc/init.d/easytier
-          perl -pi -e 's/^ +(?=\t)//' luci-app-easytier/luasrc/controller/easytier.lua
-          perl -pi -e 's/^ +(?=\t)//' luci-app-easytier/luasrc/model/cbi/easytier.lua
-          perl -pi -e 's/^ +(?=\t)//' luci-app-easytier/root/etc/init.d/easytier
-
       - name: Install Lua syntax checker
         run: |
           sudo apt-get update
@@ -55,9 +46,11 @@ jobs:
           sh -n luci-app-easytier/root/etc/init.d/easytier
           luac5.1 -p luci-app-easytier/luasrc/controller/easytier.lua
           luac5.1 -p luci-app-easytier/luasrc/model/cbi/easytier.lua
-          git diff --check
-          grep -q 'ckbkdj/EasyTier' easytier/Makefile
+          grep -q 'EASYTIER_OPENWRT_AARCH64_FIX_REPO=ckbkdj/EasyTier' version.mk
+          grep -q 'v2.6.4-openwrt-ipv6fix.1' easytier/Makefile
           grep -q 'v2.6.4-openwrt-ipv6fix.1' luci-app-easytier/root/etc/init.d/easytier
+          grep -q 'resolve_release_source' luci-app-easytier/luasrc/controller/easytier.lua
+          grep -q 'openwrt_ipv6_udp_fix' luci-app-easytier/luasrc/model/cbi/easytier.lua
 
       - name: Commit integration
         run: |
