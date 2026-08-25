@@ -1,9 +1,10 @@
-include $(TOPDIR)/rules.mk
+# Load the shared EasyTier version/release source before rules.mk changes MAKEFILE_LIST.
 -include $(dir $(lastword $(MAKEFILE_LIST)))../version.mk
+include $(TOPDIR)/rules.mk
 
 PKG_NAME:=easytier
 PKG_VERSION:=$(or $(EASYTIER_VERSION),2.6.4)
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 ifeq ($(ARCH),mipsel)
 	APP_ARCH:=mipsel
