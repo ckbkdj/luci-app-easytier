@@ -1,7 +1,6 @@
 name: Build-OpenWrt-EasyTier
 
 on:
-  #push:
   workflow_dispatch:
     inputs:
       tag:
@@ -12,14 +11,18 @@ on:
         description: '请填写发布的说明'
         required: false
         default: ''
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
 env:
   TAG: "${{ github.event.inputs.tag }}"
   TZ: Asia/Shanghai
+
 permissions:
   contents: write
+
 jobs:
   build:
     name: Build ${{ matrix.arch }}-${{ matrix.sdk }}
@@ -34,25 +37,13 @@ jobs:
           - arm_arm1176jzf-s_vfp
           - arm_arm926ej-s
           - arm_cortex-a15_neon-vfpv4
-          - arm_cortex-a5_vfpv4
           - arm_cortex-a7
           - arm_cortex-a7_neon-vfpv4
           - arm_cortex-a8_vfpv3
           - arm_cortex-a9
           - arm_cortex-a9_neon
           - arm_cortex-a9_vfpv3-d16
-          - arm_fa526
-          #- arm_mpcore
-          - arm_xscale
-          - mips_24kc
-          #- mips_4kec
-          - mips_mips32
-          - mipsel_24kc
-          - mipsel_24kc_24kf
-          - mipsel_74kc
-          - mipsel_mips32
           - x86_64
-          
         sdk:
           - 24.10.6
           - SNAPSHOT
@@ -61,6 +52,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
       - name: Cache OpenWrt SDK
         uses: actions/cache@v5
         with:
@@ -68,7 +60,7 @@ jobs:
             /opt/openwrt-sdk-${{ matrix.arch }}-${{ matrix.sdk }}
             dl
           key: sdk-${{ matrix.arch }}-${{ matrix.sdk }}
-          
+
       - name: Create i18n uci-defaults file
         run: |
           mkdir -p luci-app-easytier/root/etc/uci-defaults
@@ -82,14 +74,13 @@ jobs:
           exit 0
           EOF
           chmod +x luci-app-easytier/root/etc/uci-defaults/luci-i18n-easytier-zh-cn
-          
+
       - name: Building packages
         uses: openwrt/gh-action-sdk@main
         env:
           ARCH: ${{ matrix.arch }}-${{ matrix.sdk }}
           FEEDNAME: packages_ci
           PACKAGES: easytier luci-app-easytier
-          #NO_DEFAULT_FEEDS: 1
           NO_REFRESH_CHECK: 1
           NO_SHFMT_CHECK: 1
           MAKEFLAGS: -j$(nproc)
@@ -117,27 +108,27 @@ jobs:
         run: |
           sudo timedatectl set-timezone "Asia/Shanghai"
           mkdir -p release
+          shopt -s nullglob
           for dir in artifacts/*; do
             name=$(basename "$dir")
-            zip -j "release/EasyTier-${{ env.TAG }}-${name}.zip" "$dir"/*
+            files=("$dir"/*.ipk "$dir"/*.apk)
+            if [ ${#files[@]} -gt 0 ]; then
+              zip -j "release/EasyTier-${{ env.TAG }}-${name}.zip" "${files[@]}"
+            fi
           done
           echo "build_time=$(TZ=UTC-8 date '+%Y年%m月%d日%H:%M:%S' | jq -sRr @uri)" >> $GITHUB_ENV
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-            token: ${{ secrets.GITHUB_TOKEN }}
-            body: |
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            > ### ![](https://img.shields.io/badge/%E7%BC%96%E8%AF%91%E6%97%B6%E9%97%B4-${{ env.build_time }}-easytier?logo=github&labelColor=%E9%A1%BB)![](https://img.shields.io/github/downloads/${{ github.repository }}/${{ env.TAG }}/total?label=%E4%B8%8B%E8%BD%BD%E6%AC%A1%E6%95%B0&logo=github)
 
-             > ### ![](https://img.shields.io/badge/%E7%BC%96%E8%AF%91%E6%97%B6%E9%97%B4-${{ env.build_time }}-easytier?logo=github&labelColor=%E9%A1%BB)![](https://img.shields.io/github/downloads/${{ github.repository }}/${{ env.TAG }}/total?label=%E4%B8%8B%E8%BD%BD%E6%AC%A1%E6%95%B0&logo=github)
+            - `24.10.6` 为 OpenWrt 24.10.6 构建产物。
+            - `SNAPSHOT` 为 OpenWrt SNAPSHOT / APK 构建产物。
+            - EasyTier core 来源：`ckbkdj/EasyTier` 的 IPv6 UDP/WireGuard 修复版。
 
-             - 其中 **`24.10.6`** 里面是 OpenWrt 24.10.6 安装包，**`SNAPSHOT`** 里面是新版 APK 包
-
-             - **`*.apk` 是OpenWrt新版的APK包** 对于apk包跳过证书命令
-             `apk add --allow-untrusted luci-app-easytier.apk`
-
-             ${{ github.event.inputs.text }}
-           
-            tag_name: ${{ env.TAG }}
-            files: release/*.zip
- 
+            ${{ github.event.inputs.text }}
+          tag_name: ${{ env.TAG }}
+          files: release/*.zip
