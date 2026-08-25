@@ -1,0 +1,27 @@
+name: Trigger full OpenWrt build
+
+on:
+  push:
+    branches:
+      - fix/openwrt-ipv6-udp-source
+    paths:
+      - .github/workflows/trigger-full-build.yml
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch existing build.yml on fix branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/build.yml/dispatches" \
+            -f ref='fix/openwrt-ipv6-udp-source' \
+            -f 'inputs[tag]=' \
+            -f 'inputs[text]=IPv6 UDP/WG fix full matrix validation'
