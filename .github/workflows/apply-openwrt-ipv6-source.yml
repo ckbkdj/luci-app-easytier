@@ -1,0 +1,551 @@
+name: Apply OpenWrt IPv6 UDP fixed source
+
+on:
+  push:
+    branches:
+      - fix/openwrt-ipv6-udp-source
+    paths:
+      - .github/workflows/apply-openwrt-ipv6-source.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-check:
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[applied openwrt-ipv6-source]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v5
+        with:
+          ref: fix/openwrt-ipv6-udp-source
+          fetch-depth: 0
+
+      - name: Apply OpenWrt integration changes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          VERSION = "2.6.4"
+          FIX_REPO = "ckbkdj/EasyTier"
+          FIX_TAG = "v2.6.4-openwrt-ipv6fix.1"
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"replacement target not found in {path}: {old[:80]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          Path("version.mk").write_text(f'''# EasyTier Version Configuration
+          # This file is the single source of truth for the EasyTier version and release source.
+          # Used by: easytier/Makefile, easytier-noweb/Makefile, luci-app-easytier/Makefile
+
+          EASYTIER_VERSION={VERSION}
+          EASYTIER_RELEASE_REPO=EasyTier/EasyTier
+          EASYTIER_RELEASE_TAG=v{VERSION}
+
+          # OpenWrt aarch64 compatibility build. The patched core preserves the IPv6
+          # destination address as the source address for UDP/WireGuard listener replies.
+          EASYTIER_OPENWRT_AARCH64_FIX_REPO={FIX_REPO}
+          EASYTIER_OPENWRT_AARCH64_FIX_TAG={FIX_TAG}
+          ''')
+
+          Path("easytier/Makefile").write_text(r'''include $(TOPDIR)/rules.mk
+          -include $(dir $(lastword $(MAKEFILE_LIST)))../version.mk
+
+          PKG_NAME:=easytier
+          PKG_VERSION:=$(or $(EASYTIER_VERSION),2.6.4)
+          PKG_RELEASE:=2
+
+          ifeq ($(ARCH),mipsel)
+          	APP_ARCH:=mipsel
+          endif
+          ifeq ($(ARCH),mips)
+          	APP_ARCH:=mips
+          endif
+          ifeq ($(ARCH),arm)
+          	APP_ARCH:=arm
+          endif
+          ifeq ($(BOARD),kirkwood)
+          	APP_ARCH:=arm
+          endif
+          ifeq ($(ARCH),armv7)
+          	APP_ARCH:=armv7
+          endif
+          ifeq ($(ARCH),aarch64)
+          	APP_ARCH:=aarch64
+          endif
+          ifeq ($(ARCH),arm64)
+          	APP_ARCH:=aarch64
+          endif
+          ifeq ($(ARCH),armv8)
+          	APP_ARCH:=aarch64
+          endif
+          ifeq ($(ARCH),x86_64)
+          	APP_ARCH:=x86_64
+          endif
+
+          RELEASE_REPO:=$(or $(EASYTIER_RELEASE_REPO),EasyTier/EasyTier)
+          RELEASE_TAG:=$(or $(EASYTIER_RELEASE_TAG),v$(PKG_VERSION))
+          ifeq ($(APP_ARCH),aarch64)
+          ifneq ($(strip $(EASYTIER_OPENWRT_AARCH64_FIX_REPO)),)
+          	RELEASE_REPO:=$(EASYTIER_OPENWRT_AARCH64_FIX_REPO)
+          endif
+          ifneq ($(strip $(EASYTIER_OPENWRT_AARCH64_FIX_TAG)),)
+          	RELEASE_TAG:=$(EASYTIER_OPENWRT_AARCH64_FIX_TAG)
+          endif
+          endif
+          RELEASE_ARCHIVE:=easytier-linux-$(APP_ARCH)-$(RELEASE_TAG).zip
+          RELEASE_URL:=https://github.com/$(RELEASE_REPO)/releases/download/$(RELEASE_TAG)/$(RELEASE_ARCHIVE)
+
+          PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
+
+          include $(INCLUDE_DIR)/package.mk
+
+          RSTRIP:=:
+
+          define Package/$(PKG_NAME)
+          	SECTION:=net
+          	CATEGORY:=Network
+          	TITLE:=A simple, decentralized mesh VPN with WireGuard support.
+          	DEPENDS:=@(x86_64||arm||aarch64||mipsel||mips) +kmod-tun
+          	URL:=https://github.com/EasyTier/EasyTier
+          	MENU:=1
+          endef
+
+          define Package/$(PKG_NAME)/description
+            A simple, decentralized mesh VPN with WireGuard support.
+          endef
+
+          define Package/$(PKG_NAME)/config
+          	config EASYTIER_INCLUDE_WEBCONSOLE
+          		bool "Include Web Console (easytier-web)"
+          		depends on PACKAGE_$(PKG_NAME)
+          		depends on !(mips || mipsel)
+          		default y
+          		help
+          		  Install the easytier-web web console.
+          endef
+
+          define Build/Prepare
+          	mkdir -p $(PKG_BUILD_DIR)
+          	if [ ! -f $(PKG_BUILD_DIR)/easytier-core ]; then \
+          		echo "Downloading EasyTier from $(RELEASE_URL)"; \
+          		wget "$(RELEASE_URL)" -O $(PKG_BUILD_DIR)/$(RELEASE_ARCHIVE); \
+          		test -s $(PKG_BUILD_DIR)/$(RELEASE_ARCHIVE); \
+          		unzip -o -j $(PKG_BUILD_DIR)/$(RELEASE_ARCHIVE) -d $(PKG_BUILD_DIR); \
+          		rm -f $(PKG_BUILD_DIR)/$(RELEASE_ARCHIVE); \
+          		test -s $(PKG_BUILD_DIR)/easytier-core; \
+          		test -s $(PKG_BUILD_DIR)/easytier-cli; \
+          		test -s $(PKG_BUILD_DIR)/easytier-web-embed; \
+          	fi
+          endef
+
+          define Build/Compile
+          endef
+
+          define Package/$(PKG_NAME)/install
+          	$(INSTALL_DIR) $(1)/usr/bin
+          	$(CP) $(PKG_BUILD_DIR)/easytier-core $(1)/usr/bin/
+          	chmod 0755 $(1)/usr/bin/easytier-core
+          	$(CP) $(PKG_BUILD_DIR)/easytier-cli $(1)/usr/bin/
+          	chmod 0755 $(1)/usr/bin/easytier-cli
+          ifdef CONFIG_EASYTIER_INCLUDE_WEBCONSOLE
+          	$(CP) $(PKG_BUILD_DIR)/easytier-web-embed $(1)/usr/bin/easytier-web
+          	chmod 0755 $(1)/usr/bin/easytier-web
+          endif
+          endef
+
+          $(eval $(call BuildPackage,$(PKG_NAME)))
+          ''')
+
+          Path("easytier-noweb/Makefile").write_text(r'''include $(TOPDIR)/rules.mk
+          -include $(dir $(lastword $(MAKEFILE_LIST)))../version.mk
+
+          PKG_NAME:=easytier-noweb
+          PKG_VERSION:=$(or $(EASYTIER_VERSION),2.6.4)
+          PKG_RELEASE:=2
+
+          ifeq ($(ARCH),mipsel)
+          	APP_ARCH:=mipsel
+          endif
+          ifeq ($(ARCH),mips)
+          	APP_ARCH:=mips
+          endif
+          ifeq ($(ARCH),arm)
+          	APP_ARCH:=arm
+          endif
+          ifeq ($(BOARD),kirkwood)
+          	APP_ARCH:=arm
+          endif
+          ifeq ($(ARCH),armv7)
+          	APP_ARCH:=armv7
+          endif
+          ifeq ($(ARCH),aarch64)
+          	APP_ARCH:=aarch64
+          endif
+          ifeq ($(ARCH),arm64)
+          	APP_ARCH:=aarch64
+          endif
+          ifeq ($(ARCH),armv8)
+          	APP_ARCH:=aarch64
+          endif
+          ifeq ($(ARCH),x86_64)
+          	APP_ARCH:=x86_64
+          endif
+
+          RELEASE_REPO:=$(or $(EASYTIER_RELEASE_REPO),EasyTier/EasyTier)
+          RELEASE_TAG:=$(or $(EASYTIER_RELEASE_TAG),v$(PKG_VERSION))
+          ifeq ($(APP_ARCH),aarch64)
+          ifneq ($(strip $(EASYTIER_OPENWRT_AARCH64_FIX_REPO)),)
+          	RELEASE_REPO:=$(EASYTIER_OPENWRT_AARCH64_FIX_REPO)
+          endif
+          ifneq ($(strip $(EASYTIER_OPENWRT_AARCH64_FIX_TAG)),)
+          	RELEASE_TAG:=$(EASYTIER_OPENWRT_AARCH64_FIX_TAG)
+          endif
+          endif
+          RELEASE_ARCHIVE:=easytier-linux-$(APP_ARCH)-$(RELEASE_TAG).zip
+          RELEASE_URL:=https://github.com/$(RELEASE_REPO)/releases/download/$(RELEASE_TAG)/$(RELEASE_ARCHIVE)
+
+          PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
+
+          include $(INCLUDE_DIR)/package.mk
+
+          RSTRIP:=:
+
+          define Package/$(PKG_NAME)
+          	SECTION:=net
+          	CATEGORY:=Network
+          	TITLE:=A simple, decentralized mesh VPN with WireGuard support.
+          	DEPENDS:=@(x86_64||arm||aarch64||mipsel||mips) +kmod-tun
+          	URL:=https://github.com/EasyTier/EasyTier
+          	MENU:=1
+          endef
+
+          define Package/$(PKG_NAME)/description
+            A simple, decentralized mesh VPN with WireGuard support.
+          endef
+
+          define Build/Prepare
+          	mkdir -p $(PKG_BUILD_DIR)
+          	if [ ! -f $(PKG_BUILD_DIR)/easytier-core ]; then \
+          		echo "Downloading EasyTier from $(RELEASE_URL)"; \
+          		wget "$(RELEASE_URL)" -O $(PKG_BUILD_DIR)/$(RELEASE_ARCHIVE); \
+          		test -s $(PKG_BUILD_DIR)/$(RELEASE_ARCHIVE); \
+          		unzip -o -j $(PKG_BUILD_DIR)/$(RELEASE_ARCHIVE) -d $(PKG_BUILD_DIR); \
+          		rm -f $(PKG_BUILD_DIR)/$(RELEASE_ARCHIVE); \
+          		test -s $(PKG_BUILD_DIR)/easytier-core; \
+          		test -s $(PKG_BUILD_DIR)/easytier-cli; \
+          	fi
+          endef
+
+          define Build/Compile
+          endef
+
+          define Package/$(PKG_NAME)/install
+          	$(INSTALL_DIR) $(1)/usr/bin
+          	$(CP) $(PKG_BUILD_DIR)/easytier-core $(1)/usr/bin/
+          	chmod 0755 $(1)/usr/bin/easytier-core
+          	$(CP) $(PKG_BUILD_DIR)/easytier-cli $(1)/usr/bin/
+          	chmod 0755 $(1)/usr/bin/easytier-cli
+          endef
+
+          $(eval $(call BuildPackage,$(PKG_NAME)))
+          ''')
+
+          replace_once("luci-app-easytier/Makefile", "PKG_RELEASE:=1", "PKG_RELEASE:=2")
+
+          uci_path = Path("luci-app-easytier/root/etc/config/easytier")
+          uci_text = uci_path.read_text()
+          if "openwrt_ipv6_udp_fix" not in uci_text:
+              uci_text = uci_text.rstrip() + "\n\toption openwrt_ipv6_udp_fix '1'\n"
+              uci_path.write_text(uci_text)
+
+          init_path = Path("luci-app-easytier/root/etc/init.d/easytier")
+          init_text = init_path.read_text()
+          new_check_bin = r'''check_bin() {
+          	# aarch64 OpenWrt defaults to the patched EasyTier build until the fix is upstream.
+          	local release_repo="EasyTier/EasyTier"
+          	local release_tag=""
+          	local use_openwrt_fix="$(uci -q get easytier.@easytier[0].openwrt_ipv6_udp_fix)"
+          	[ -z "$use_openwrt_fix" ] && use_openwrt_fix="1"
+          	if [ "$cpucore" = "aarch64" ] && [ "$use_openwrt_fix" = "1" ]; then
+          		release_repo="ckbkdj/EasyTier"
+          		release_tag="v2.6.4-openwrt-ipv6fix.1"
+          	fi
+
+          	# 优先使用 UCI 配置的代理列表（list 类型），否则使用默认值
+          	local proxys=""
+          	local proxy_list="$(uci -q get easytier.@easytier[0].github_proxys)"
+          	if [ -n "$proxy_list" ]; then
+          		if [ "$(grep "list github_proxys" /etc/config/easytier | awk '{print $3}' | wc -l)" -eq 1 ]; then
+          			proxys="$proxy_list"
+          		else
+          			proxys=$(grep 'list github_proxys' /etc/config/easytier | awk -F 'list github_proxys' '{print $2}' | sed "s/'/\n/g" | tr -d " ' ")
+          		fi
+          	fi
+          	[ -z "$proxys" ] && proxys="https://ghproxy.net/ https://gh-proxy.com/ https://cdn.gh-proxy.com/ https://ghfast.top/"
+
+          	local user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+          	local tag="$release_tag"
+          	if [ -z "$tag" ]; then
+          		if command -v curl >/dev/null 2>&1; then
+          			tag="$(curl -LksS --connect-timeout 5 --user-agent "$user_agent" "https://api.github.com/repos/${release_repo}/releases/latest" 2>/dev/null | grep '"tag_name"' | head -n1 | cut -d\" -f4)"
+          		else
+          			tag="$(wget --no-check-certificate -T 8 -t 2 -qO- "https://api.github.com/repos/${release_repo}/releases/latest" 2>/dev/null | grep '"tag_name"' | head -n1 | cut -d\" -f4)"
+          		fi
+          		if [ -z "$tag" ]; then
+          			tag="$(uci -q get easytier.@easytier[0].fallback_version)"
+          			[ -z "$tag" ] && tag="v2.6.4"
+          		fi
+          	fi
+
+          	local archive="easytier-linux-${cpucore}-${tag}.zip"
+          	local release_url="https://github.com/${release_repo}/releases/download/${tag}/${archive}"
+          	echo "$(date '+%Y-%m-%d %H:%M:%S') easytier : 下载源 ${release_repo} ${tag} (${cpucore})" >>/tmp/easytier.log
+          	echo "$(date '+%Y-%m-%d %H:%M:%S') easytier : 下载源 ${release_repo} ${tag} (${cpucore})" >>/tmp/easytierweb.log
+
+          	if ! command -v unzip >/dev/null 2>&1; then
+          		echo "$(date '+%Y-%m-%d %H:%M:%S') easytier : 系统缺少 unzip，无法解压 EasyTier" >>/tmp/easytier.log
+          		return 1
+          	fi
+          	mkdir -p "$path"
+
+          	local proxy full_url
+          	for proxy in $proxys ""; do
+          		full_url="${proxy}${release_url}"
+          		rm -f /tmp/easytier.zip /tmp/easytier-core /tmp/easytier-cli /tmp/easytier-web-embed /tmp/easytier-web
+          		if (command -v curl >/dev/null 2>&1 && curl -LkfsS -o /tmp/easytier.zip --connect-timeout 10 --retry 2 "$full_url") || \
+          		   wget --no-check-certificate --timeout=10 --tries=2 -O /tmp/easytier.zip "$full_url"; then
+          			if ! unzip -j -q -o /tmp/easytier.zip -d /tmp; then
+          				echo "$(date '+%Y-%m-%d %H:%M:%S') easytier : ${full_url} 解压失败" >>/tmp/easytier.log
+          				continue
+          			fi
+          			chmod +x /tmp/easytier-core /tmp/easytier-cli /tmp/easytier-web /tmp/easytier-web-embed 2>/dev/null || true
+          			if [ ! -s /tmp/easytier-core ] || [ ! -s /tmp/easytier-cli ]; then
+          				echo "$(date '+%Y-%m-%d %H:%M:%S') easytier : ${full_url} 缺少 core/cli" >>/tmp/easytier.log
+          				continue
+          			fi
+
+          			if [ "$(uci -q get easytier.@easytier[0].enabled)" = "1" ]; then
+          				mv -f /tmp/easytier-core "${path}/easytier-core"
+          				mv -f /tmp/easytier-cli "${path}/easytier-cli"
+          				chmod +x "$easytierbin" "${path}/easytier-cli"
+          				if [ "$($easytierbin -h 2>&1 | wc -l)" -le 3 ]; then
+          					echo "$(date '+%Y-%m-%d %H:%M:%S') easytier : 下载后的 easytier-core 无法正常执行" >>/tmp/easytier.log
+          					continue
+          				fi
+          			fi
+
+          			if [ "$(uci -q get easytier.@easytier[0].web_enabled)" = "1" ]; then
+          				if [ -s /tmp/easytier-web-embed ]; then
+          					mv -f /tmp/easytier-web-embed "$webbin"
+          					chmod +x "$webbin"
+          				fi
+          			fi
+
+          			echo "$(date '+%Y-%m-%d %H:%M:%S') easytier : EasyTier ${tag} 下载完成" >>/tmp/easytier.log
+          			rm -f /tmp/easytier.zip
+          			return 0
+          		fi
+          		echo "$(date '+%Y-%m-%d %H:%M:%S') easytier : ${full_url} 下载失败" >>/tmp/easytier.log
+          	done
+          	return 1
+          }'''
+          init_text, count = re.subn(r"check_bin\(\) \{.*?\n\}\n\ncheck_config\(\) \{", new_check_bin + "\n\ncheck_config() {", init_text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit("failed to replace check_bin()")
+          init_path.write_text(init_text)
+
+          controller = Path("luci-app-easytier/luasrc/controller/easytier.lua")
+          text = controller.read_text()
+          replace = 'local i18n = require "luci.i18n"\n'
+          if 'OPENWRT_IPV6_FIX_REPO' not in text:
+              text = text.replace(replace, replace + '\nlocal OPENWRT_IPV6_FIX_REPO = "ckbkdj/EasyTier"\nlocal OPENWRT_IPV6_FIX_TAG = "v2.6.4-openwrt-ipv6fix.1"\n', 1)
+
+          marker = '\treturn cpucore\nend\n\n-- 检查依赖\n'
+          helper = '''\treturn cpucore
+          end
+
+          local function resolve_release_source(arch, requested_version)
+          \tlocal uci = require "luci.model.uci".cursor()
+          \tlocal use_fix = uci:get_first("easytier", "easytier", "openwrt_ipv6_udp_fix")
+          \tif use_fix == nil or use_fix == "" then use_fix = "1" end
+          \tif arch == "aarch64" and use_fix == "1" then
+          \t\treturn OPENWRT_IPV6_FIX_REPO, OPENWRT_IPV6_FIX_TAG, true
+          \tend
+          \treturn "EasyTier/EasyTier", requested_version, false
+          end
+
+          -- 检查依赖
+          '''
+          if 'resolve_release_source' not in text:
+              if marker not in text:
+                  raise SystemExit('controller detect_arch marker not found')
+              text = text.replace(marker, helper, 1)
+
+          old = '''\tlocal version = req_data.version
+          \t
+          \t-- 1. 检查依赖和架构
+          \tlocal ok, arch_or_error = check_dependencies()
+          \tif not ok then
+          \t\tluci.http.write_json({success = false, message = arch_or_error})
+          \t\treturn
+          \tend
+          \t
+          \tlocal arch = arch_or_error
+          \tlocal proxies = get_github_proxies()
+          \tlocal download_dir = "/tmp/easytier_download"
+          \tlocal zip_file = download_dir .. "/easytier-linux-" .. arch .. "-" .. version .. ".zip"
+          '''
+          new = '''\tlocal requested_version = req_data.version
+          \t
+          \t-- 1. 检查依赖和架构
+          \tlocal ok, arch_or_error = check_dependencies()
+          \tif not ok then
+          \t\tluci.http.write_json({success = false, message = arch_or_error})
+          \t\treturn
+          \tend
+          \t
+          \tlocal arch = arch_or_error
+          \tlocal release_repo, version, using_openwrt_fix = resolve_release_source(arch, requested_version)
+          \tlocal proxies = get_github_proxies()
+          \tlocal download_dir = "/tmp/easytier_download"
+          \tlocal zip_file = download_dir .. "/easytier-linux-" .. arch .. "-" .. version .. ".zip"
+          '''
+          if old not in text:
+              raise SystemExit('controller download version block not found')
+          text = text.replace(old, new, 1)
+
+          old_url = '\t\tdownload_url = proxy .. "https://github.com/EasyTier/EasyTier/releases/download/" .. version .. "/easytier-linux-" .. arch .. "-" .. version .. ".zip"\n'
+          new_url = '\t\tdownload_url = proxy .. "https://github.com/" .. release_repo .. "/releases/download/" .. version .. "/easytier-linux-" .. arch .. "-" .. version .. ".zip"\n'
+          if old_url not in text:
+              raise SystemExit('controller download URL not found')
+          text = text.replace(old_url, new_url, 1)
+
+          old_extract = '''\t\t\t\t\tif subdir and subdir ~= "" then
+          \t\t\t\t\t\tcore_file = subdir .. "/easytier-core"
+          \t\t\t\t\t\tcli_file = subdir .. "/easytier-cli"
+          \t\t\t\t\t\tweb_file = subdir .. "/easytier-web-embed"
+          \t\t\t\t\t\t
+          \t\t\t\t\t\tlocal files_ok = nixio.fs.access(core_file) and nixio.fs.access(cli_file)
+          '''
+          new_extract = '''\t\t\t\t\tlocal binary_dir = extract_dir
+          \t\t\t\t\tif subdir and subdir ~= "" then
+          \t\t\t\t\t\tbinary_dir = subdir
+          \t\t\t\t\tend
+          \t\t\t\t\tcore_file = binary_dir .. "/easytier-core"
+          \t\t\t\t\tcli_file = binary_dir .. "/easytier-cli"
+          \t\t\t\t\tweb_file = binary_dir .. "/easytier-web-embed"
+          \t\t\t\t\t
+          \t\t\t\t\tlocal files_ok = nixio.fs.access(core_file) and nixio.fs.access(cli_file)
+          '''
+          if old_extract not in text:
+              raise SystemExit('controller extraction block not found')
+          text = text.replace(old_extract, new_extract, 1)
+
+          # The old code closed the subdir conditional after the validation block. With
+          # flat archives supported, remove exactly that now-superfluous closing `end`.
+          old_tail = '''\t\t\t\t\t\t\tif test_ok then
+          \t\t\t\t\t\t\t\tdownload_success = true
+          \t\t\t\t\t\t\t\tbreak
+          \t\t\t\t\t\t\tend
+          \t\t\t\t\t\tend
+          \t\t\t\t\tend
+          \t\t\t\tend
+          '''
+          new_tail = '''\t\t\t\t\t\tif test_ok then
+          \t\t\t\t\t\t\tdownload_success = true
+          \t\t\t\t\t\t\tbreak
+          \t\t\t\t\t\tend
+          \t\t\t\t\tend
+          \t\t\t\tend
+          '''
+          if old_tail not in text:
+              raise SystemExit('controller extraction tail not found')
+          text = text.replace(old_tail, new_tail, 1)
+
+          success_old = 'message = i18n.translate("Download and installation completed")\n\t})\nend\n'
+          success_new = 'message = i18n.translate("Download and installation completed") .. (using_openwrt_fix and " [OpenWrt IPv6 UDP/WG fix]" or "")\n\t})\nend\n'
+          if success_old not in text:
+              raise SystemExit('controller success message not found')
+          text = text.replace(success_old, success_new, 1)
+          controller.write_text(text)
+
+          cbi = Path("luci-app-easytier/luasrc/model/cbi/easytier.lua")
+          cbi_text = cbi.read_text()
+          cbi_marker = '-- Network Configuration Options\n'
+          if 'openwrt_ipv6_udp_fix' not in cbi_text:
+              option = '''openwrt_ipv6_udp_fix = s:taboption("privacy", Flag, "openwrt_ipv6_udp_fix", translate("Use OpenWrt IPv6 UDP/WG Fix Build"),
+          \ttranslate("On aarch64 OpenWrt, use the patched EasyTier v2.6.4 build for package/runtime downloads. "
+          \t\t.. "It preserves the IPv6 address that received a UDP/WireGuard packet as the reply source address. "
+          \t\t.. "Disable this only if you intentionally want to return to the official release binary."))
+          openwrt_ipv6_udp_fix.default = "1"
+          openwrt_ipv6_udp_fix.rmempty = false
+
+          '''
+              if cbi_marker not in cbi_text:
+                  raise SystemExit('CBI network marker not found')
+              cbi_text = cbi_text.replace(cbi_marker, option + cbi_marker, 1)
+              cbi.write_text(cbi_text)
+
+          doc = Path("OPENWRT_IPV6_UDP_FIX.md")
+          doc.write_text(f'''# OpenWrt aarch64 IPv6 UDP/WireGuard fix
+
+          This repository uses a patched EasyTier build on **aarch64 OpenWrt** while the upstream IPv6 UDP reply-source bug is unresolved.
+
+          - Source repository: `{FIX_REPO}`
+          - Fixed release: `{FIX_TAG}`
+          - EasyTier base version: `v{VERSION}`
+          - Affected path: UDP / WireGuard listeners on wildcard IPv6 sockets (`[::]`) on hosts with multiple IPv6 addresses.
+
+          ## What is changed
+
+          1. `easytier` and `easytier-noweb` package builds use the fixed release only for `aarch64`; other architectures continue using the official EasyTier release.
+          2. The LuCI online downloader and the init-script emergency downloader use the same fixed release on aarch64.
+          3. The fix can be disabled with `openwrt_ipv6_udp_fix=0` in `/etc/config/easytier` or from LuCI Advanced Settings.
+          4. Online extraction accepts both the official release directory layout and the flat OpenWrt fix archive.
+
+          ## Verification on OpenWrt
+
+          ```sh
+          uci get easytier.@easytier[0].openwrt_ipv6_udp_fix
+          /usr/bin/easytier-core -V
+          netstat -lnptu | grep -E 'easytier|11010|1800|1804'
+          tcpdump -ni any -nn 'udp port 1800 or udp port 1804'
+          ```
+
+          For a client packet sent to IPv6 address `A`, the server reply must also use IPv6 address `A` as its source instead of another local IPv6 address `B`.
+          ''')
+          PY
+
+      - name: Install Lua syntax checker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+
+      - name: Validate scripts
+        run: |
+          sh -n luci-app-easytier/root/etc/init.d/easytier
+          luac5.1 -p luci-app-easytier/luasrc/controller/easytier.lua
+          luac5.1 -p luci-app-easytier/luasrc/model/cbi/easytier.lua
+          git diff --check
+          grep -q 'ckbkdj/EasyTier' easytier/Makefile
+          grep -q 'v2.6.4-openwrt-ipv6fix.1' luci-app-easytier/root/etc/init.d/easytier
+
+      - name: Commit integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version.mk easytier/Makefile easytier-noweb/Makefile luci-app-easytier/Makefile \
+            luci-app-easytier/root/etc/config/easytier \
+            luci-app-easytier/root/etc/init.d/easytier \
+            luci-app-easytier/luasrc/controller/easytier.lua \
+            luci-app-easytier/luasrc/model/cbi/easytier.lua \
+            OPENWRT_IPV6_UDP_FIX.md
+          git commit -m "fix: use patched EasyTier on aarch64 OpenWrt [applied openwrt-ipv6-source]"
+          git push origin HEAD:fix/openwrt-ipv6-udp-source
