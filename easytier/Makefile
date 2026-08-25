@@ -85,7 +85,6 @@ define Build/Prepare
 		rm -f $(PKG_BUILD_DIR)/$(RELEASE_ARCHIVE); \
 		test -s $(PKG_BUILD_DIR)/easytier-core; \
 		test -s $(PKG_BUILD_DIR)/easytier-cli; \
-		test -s $(PKG_BUILD_DIR)/easytier-web-embed; \
 	fi
 endef
 
