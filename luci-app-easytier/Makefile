@@ -4,11 +4,12 @@
 # This is free software, licensed under the Apache License, Version 2.0 .
 #
 
-include $(TOPDIR)/rules.mk
+# Load the shared EasyTier version before rules.mk changes MAKEFILE_LIST.
 -include $(dir $(lastword $(MAKEFILE_LIST)))../version.mk
+include $(TOPDIR)/rules.mk
 
-PKG_VERSION:=$(or $(EASYTIER_VERSION),2.6.0)
-PKG_RELEASE:=1
+PKG_VERSION:=$(or $(EASYTIER_VERSION),2.6.4)
+PKG_RELEASE:=3
 
 LUCI_TITLE:=LuCI support for EasyTier
 LUCI_DEPENDS:=+kmod-tun +luci-compat
