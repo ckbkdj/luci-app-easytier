@@ -19,14 +19,14 @@ jobs:
       CORE_REPO: ckbkdj/EasyTier
       CORE_TAG: v2.6.4-openwrt-ipv6fix.2
       TARGET_BRANCH: fix/24.10.6-ipv6-udp-source
-      RELEASE_TAG: v2.6.4-openwrt-ipv6fix.2-openwrt-24.10.6-r3
+      RELEASE_TAG: v2.6.4-openwrt-ipv6fix.2-openwrt-24.10.6-r4
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Verify patched multiarch EasyTier release
         shell: bash
         run: |
           set -euo pipefail
-          required=(aarch64 x86_64 arm armv7)
+          required=(aarch64 x86_64 arm armv7 mips mipsel)
           json="$(gh api "repos/${CORE_REPO}/releases/tags/${CORE_TAG}")"
           for arch in "${required[@]}"; do
             name="easytier-linux-${arch}-${CORE_TAG}.zip"
@@ -35,9 +35,9 @@ jobs:
               exit 1
             }
           done
-          echo "patched EasyTier ${CORE_TAG} release is ready"
+          echo "patched EasyTier ${CORE_TAG} multiarch release is ready"
 
-      - name: Dispatch OpenWrt 24.10.6 + SNAPSHOT matrix
+      - name: Dispatch OpenWrt 24.10.6 + SNAPSHOT full matrix
         shell: bash
         run: |
           set -euo pipefail
@@ -46,5 +46,5 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/actions/workflows/build.yml/dispatches" \
             -f ref="$TARGET_BRANCH" \
             -f "inputs[tag]=$RELEASE_TAG" \
-            -f "inputs[text]=Corrected package metadata: EasyTier/luci-app-easytier 2.6.4-r3; patched EasyTier v2.6.4 IPv6 UDP/WireGuard source-address fix; OpenWrt 24.10.6 and SNAPSHOT multi-architecture build."
-          echo "dispatched corrected 2.6.4-r3 build.yml on ${TARGET_BRANCH}"
+            -f "inputs[text]=EasyTier/luci-app-easytier 2.6.4-r4; i18n 26.237.86399~ipv6fix2; restored full 24.10.6 architecture matrix; patched EasyTier v2.6.4 IPv6 UDP/WireGuard source-address fix."
+          echo "dispatched corrected r4 full-matrix build.yml on ${TARGET_BRANCH}"
