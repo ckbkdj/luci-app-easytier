@@ -1,0 +1,71 @@
+name: Apply OpenWrt IPv6 UDP fixed source v2
+
+on:
+  push:
+    branches:
+      - fix/openwrt-ipv6-udp-source
+    paths:
+      - .github/workflows/apply-openwrt-ipv6-source-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v5
+        with:
+          ref: fix/openwrt-ipv6-udp-source
+          fetch-depth: 0
+
+      - name: Extract and run integration script
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path('.github/workflows/apply-openwrt-ipv6-source.yml').read_text().splitlines()
+          start = next(i for i, line in enumerate(src) if "python3 - <<'PY'" in line) + 1
+          end = next(i for i in range(start, len(src)) if src[i].strip() == 'PY')
+          script = []
+          for line in src[start:end]:
+              if line.startswith('          '):
+                  line = line[10:]
+              script.append(line)
+          Path('/tmp/apply_openwrt_ipv6.py').write_text('\n'.join(script) + '\n')
+          PY
+          python3 /tmp/apply_openwrt_ipv6.py
+
+      - name: Normalize generated whitespace
+        run: |
+          sed -i 's/[[:space:]]\+$//' luci-app-easytier/luasrc/controller/easytier.lua
+          sed -i 's/[[:space:]]\+$//' luci-app-easytier/luasrc/model/cbi/easytier.lua
+          sed -i 's/[[:space:]]\+$//' luci-app-easytier/root/etc/init.d/easytier
+
+      - name: Install Lua syntax checker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+
+      - name: Validate scripts
+        run: |
+          sh -n luci-app-easytier/root/etc/init.d/easytier
+          luac5.1 -p luci-app-easytier/luasrc/controller/easytier.lua
+          luac5.1 -p luci-app-easytier/luasrc/model/cbi/easytier.lua
+          git diff --check
+          grep -q 'ckbkdj/EasyTier' easytier/Makefile
+          grep -q 'v2.6.4-openwrt-ipv6fix.1' luci-app-easytier/root/etc/init.d/easytier
+
+      - name: Commit integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version.mk easytier/Makefile easytier-noweb/Makefile luci-app-easytier/Makefile \
+            luci-app-easytier/root/etc/config/easytier \
+            luci-app-easytier/root/etc/init.d/easytier \
+            luci-app-easytier/luasrc/controller/easytier.lua \
+            luci-app-easytier/luasrc/model/cbi/easytier.lua \
+            OPENWRT_IPV6_UDP_FIX.md
+          git commit -m "fix: use patched EasyTier on aarch64 OpenWrt [applied openwrt-ipv6-source]"
+          git push origin HEAD:fix/openwrt-ipv6-udp-source
