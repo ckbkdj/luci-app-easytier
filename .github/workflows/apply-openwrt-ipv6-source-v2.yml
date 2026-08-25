@@ -41,6 +41,9 @@ jobs:
           sed -i 's/[[:space:]]\+$//' luci-app-easytier/luasrc/controller/easytier.lua
           sed -i 's/[[:space:]]\+$//' luci-app-easytier/luasrc/model/cbi/easytier.lua
           sed -i 's/[[:space:]]\+$//' luci-app-easytier/root/etc/init.d/easytier
+          perl -pi -e 's/^ +(?=\t)//' luci-app-easytier/luasrc/controller/easytier.lua
+          perl -pi -e 's/^ +(?=\t)//' luci-app-easytier/luasrc/model/cbi/easytier.lua
+          perl -pi -e 's/^ +(?=\t)//' luci-app-easytier/root/etc/init.d/easytier
 
       - name: Install Lua syntax checker
         run: |
