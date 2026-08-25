@@ -47,7 +47,9 @@ jobs:
           luac5.1 -p luci-app-easytier/luasrc/controller/easytier.lua
           luac5.1 -p luci-app-easytier/luasrc/model/cbi/easytier.lua
           grep -q 'EASYTIER_OPENWRT_AARCH64_FIX_REPO=ckbkdj/EasyTier' version.mk
-          grep -q 'v2.6.4-openwrt-ipv6fix.1' easytier/Makefile
+          grep -q 'EASYTIER_OPENWRT_AARCH64_FIX_TAG=v2.6.4-openwrt-ipv6fix.1' version.mk
+          grep -q 'EASYTIER_OPENWRT_AARCH64_FIX_REPO' easytier/Makefile
+          grep -q 'EASYTIER_OPENWRT_AARCH64_FIX_REPO' easytier-noweb/Makefile
           grep -q 'v2.6.4-openwrt-ipv6fix.1' luci-app-easytier/root/etc/init.d/easytier
           grep -q 'resolve_release_source' luci-app-easytier/luasrc/controller/easytier.lua
           grep -q 'openwrt_ipv6_udp_fix' luci-app-easytier/luasrc/model/cbi/easytier.lua
