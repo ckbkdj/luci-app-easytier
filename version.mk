@@ -1,5 +1,6 @@
 # EasyTier Version Configuration
-# This file is the single source of truth for the EasyTier version
-# Used by: easytier/Makefile, luci-app-easytier/Makefile, init.d/easytier
+# Single source of truth used by OpenWrt package Makefiles.
 
-EASYTIER_VERSION=2.6.0
+EASYTIER_VERSION=2.6.4
+EASYTIER_RELEASE_REPO=ckbkdj/EasyTier
+EASYTIER_RELEASE_TAG=v2.6.4-openwrt-ipv6fix.2
