@@ -4,14 +4,13 @@ on:
   push:
     branches:
       - fix/openwrt-ipv6-udp-source
-    paths:
-      - .github/workflows/apply-openwrt-ipv6-source-v2.yml
 
 permissions:
   contents: write
 
 jobs:
   apply-and-check:
+    if: ${{ !contains(github.event.head_commit.message, '[applied openwrt-ipv6-source]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
