@@ -1,0 +1,53 @@
+name: Repair OpenWrt IPv6 apply workflow
+
+on:
+  push:
+    branches:
+      - fix/openwrt-ipv6-udp-source
+    paths:
+      - .github/workflows/repair-openwrt-ipv6-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/openwrt-ipv6-udp-source
+          fetch-depth: 0
+
+      - name: Add whitespace normalization
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/apply-openwrt-ipv6-source.yml')
+          text = p.read_text()
+          marker = '''      - name: Validate scripts
+        run: |
+          sh -n luci-app-easytier/root/etc/init.d/easytier
+'''
+          replacement = '''      - name: Normalize generated whitespace
+        run: |
+          sed -i 's/[[:space:]]\\+$//' luci-app-easytier/luasrc/controller/easytier.lua
+          sed -i 's/[[:space:]]\\+$//' luci-app-easytier/luasrc/model/cbi/easytier.lua
+          sed -i 's/[[:space:]]\\+$//' luci-app-easytier/root/etc/init.d/easytier
+
+      - name: Validate scripts
+        run: |
+          sh -n luci-app-easytier/root/etc/init.d/easytier
+'''
+          if marker not in text:
+              raise SystemExit('validate marker not found')
+          p.write_text(text.replace(marker, replacement, 1))
+          PY
+
+      - name: Commit repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/apply-openwrt-ipv6-source.yml
+          git commit -m "ci: normalize generated OpenWrt integration whitespace"
+          git push origin HEAD:fix/openwrt-ipv6-udp-source
