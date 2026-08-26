@@ -59,6 +59,14 @@ if [ -d /tmp/et_config_backup ] ; then
   mv -f /tmp/et_config_backup /etc/easytier
   echo "请前往 VPN - EasyTier 界面进行重启插件"
 fi
+
+# Migrate the legacy wrapper netmask after restoring an existing config.
+# This prevents netifd from creating a competing 10.0.0.0/8 route on CPEs
+# whose physical WAN is also in 10/8. Preserve any non-default custom value.
+if [ "$(uci -q get easytier.@easytier[0].interface_netmask)" = "255.0.0.0" ]; then
+  uci -q set easytier.@easytier[0].interface_netmask='255.255.255.0'
+  uci -q commit easytier
+fi
 endef
 
 include $(TOPDIR)/feeds/luci/luci.mk
