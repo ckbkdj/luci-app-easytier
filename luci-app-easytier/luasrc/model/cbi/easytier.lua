@@ -436,7 +436,7 @@ auto_config_interface.default = "1"
 interface_netmask = s:taboption("privacy", Value, "interface_netmask", translate("Interface Netmask"),
         translate("Subnet mask for the EasyTier interface (default: 255.0.0.0)"))
 interface_netmask.placeholder = "255.0.0.0"
-interface_netmask.default = "255.0.0.0"
+interface_netmask.default = "255.255.255.0"
 interface_netmask.datatype = "ip4addr"
 interface_netmask:depends("auto_config_interface", "1")
 
