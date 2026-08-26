@@ -10,12 +10,12 @@ include $(TOPDIR)/rules.mk
 
 # The LuCI application follows the EasyTier core version.
 PKG_VERSION:=$(or $(EASYTIER_VERSION),2.6.4)
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 
 # luci.mk assigns translation package VERSION from PKG_PO_VERSION, not
 # PKG_VERSION. Keep it on the LuCI versioning scheme so existing newer LuCI
 # translation packages are not treated as newer than this fixed package.
-PKG_PO_VERSION:=$(or $(EASYTIER_LUCI_PO_VERSION),26.237.86399~ipv6fix2)
+PKG_PO_VERSION:=$(or $(EASYTIER_LUCI_PO_VERSION),26.238.86399~netfix1)
 
 LUCI_TITLE:=LuCI support for EasyTier
 LUCI_DEPENDS:=+kmod-tun +luci-compat
