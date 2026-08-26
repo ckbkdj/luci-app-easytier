@@ -7,6 +7,15 @@ uci -q batch <<-EOF >/dev/null
 	commit ucitrack
 EOF
 
+# Older packages defaulted the EasyTier netifd wrapper to /8.  That can
+# collide with a real 10.0.0.0/8 WAN/CPE network even though EasyTier itself
+# uses a /24 virtual network.  Migrate only the old default; preserve any
+# netmask the user explicitly customized.
+if [ "$(uci -q get easytier.@easytier[0].interface_netmask)" = "255.0.0.0" ]; then
+	uci -q set easytier.@easytier[0].interface_netmask='255.255.255.0'
+	uci -q commit easytier
+fi
+
 chmod +x /etc/init.d/easytier
 /etc/init.d/easytier enable
 rm -rf /tmp/luci-indexcache /tmp/luci-modulecache
