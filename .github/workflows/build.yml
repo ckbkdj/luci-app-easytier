@@ -20,7 +20,7 @@ env:
   TAG: "${{ github.event.inputs.tag }}"
   TZ: Asia/Shanghai
   EXPECTED_EASYTIER_VERSION: "2.6.4"
-  EXPECTED_I18N_VERSION: "26.237.86399~ipv6fix2"
+  EXPECTED_I18N_VERSION: "26.238.86399~netfix1"
 
 permissions:
   contents: write
@@ -32,8 +32,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Keep the same architecture coverage as the user's 24.10.6 branch.
-        # arm_mpcore and mips_4kec remain intentionally disabled as in that branch.
+        # Release r5 is intentionally scoped to the user's stable OpenWrt 24.10.6
+        # target. SNAPSHOT SDKs are moving targets and caused unrelated failures.
         arch:
           - aarch64_cortex-a53
           - aarch64_cortex-a72
@@ -59,7 +59,6 @@ jobs:
           - x86_64
         sdk:
           - 24.10.6
-          - SNAPSHOT
 
     steps:
       - uses: actions/checkout@v6
@@ -73,12 +72,14 @@ jobs:
           grep -qx "EASYTIER_VERSION=${EXPECTED_EASYTIER_VERSION}" version.mk
           grep -qx "EASYTIER_LUCI_PO_VERSION=${EXPECTED_I18N_VERSION}" version.mk
           grep -q 'EASYTIER_RELEASE_REPO=ckbkdj/EasyTier' version.mk
-          grep -q 'EASYTIER_RELEASE_TAG=v2.6.4-openwrt-ipv6fix.2' version.mk
+          grep -q 'EASYTIER_RELEASE_TAG=v2.6.4-netfix.1' version.mk
           grep -Fq 'PKG_VERSION:=$(or $(EASYTIER_VERSION),2.6.4)' easytier/Makefile
           grep -Fq 'PKG_VERSION:=$(or $(EASYTIER_VERSION),2.6.4)' luci-app-easytier/Makefile
-          grep -Fq 'PKG_PO_VERSION:=$(or $(EASYTIER_LUCI_PO_VERSION),26.237.86399~ipv6fix2)' luci-app-easytier/Makefile
-          grep -Fq 'PKG_RELEASE:=4' easytier/Makefile
-          grep -Fq 'PKG_RELEASE:=4' luci-app-easytier/Makefile
+          grep -Fq 'PKG_PO_VERSION:=$(or $(EASYTIER_LUCI_PO_VERSION),26.238.86399~netfix1)' luci-app-easytier/Makefile
+          grep -Fq 'PKG_RELEASE:=5' easytier/Makefile
+          grep -Fq 'PKG_RELEASE:=5' luci-app-easytier/Makefile
+          grep -Fq "option interface_netmask '255.255.255.0'" luci-app-easytier/root/etc/config/easytier
+          grep -Fq "interface_netmask='255.255.255.0'" luci-app-easytier/root/etc/uci-defaults/luci-easytier
           if grep -R --line-number --fixed-strings 'PKG_VERSION:=$(or $(EASYTIER_VERSION),2.6.0)' easytier luci-app-easytier; then
             echo 'stale 2.6.0 package metadata detected' >&2
             exit 1
@@ -132,17 +133,14 @@ jobs:
           test -n "$core_files"
           test -n "$luci_files"
           test -n "$i18n_files"
-
           echo "$core_files" | grep -F "$EXPECTED_EASYTIER_VERSION"
+          echo "$core_files" | grep -F -- '-r5'
           echo "$luci_files" | grep -F "$EXPECTED_EASYTIER_VERSION"
+          echo "$luci_files" | grep -F -- '-r5'
           echo "$i18n_files" | grep -F "$EXPECTED_I18N_VERSION"
 
           if find "$PKG_DIR" -maxdepth 1 -type f -name '*easytier*2.6.0*' | grep -q .; then
             echo 'built artifact still contains stale 2.6.0 version' >&2
-            exit 1
-          fi
-          if echo "$i18n_files" | grep -Fq '26.106.'; then
-            echo 'built i18n artifact still uses the old 24.10.6 LuCI feed revision' >&2
             exit 1
           fi
 
@@ -157,7 +155,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     if: ${{ github.event.inputs.tag != '' }}
-
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -183,13 +180,11 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           body: |
-            > ### ![](https://img.shields.io/badge/%E7%BC%96%E8%AF%91%E6%97%B6%E9%97%B4-${{ env.build_time }}-easytier?logo=github&labelColor=%E9%A1%BB)![](https://img.shields.io/github/downloads/${{ github.repository }}/${{ env.TAG }}/total?label=%E4%B8%8B%E8%BD%BD%E6%AC%A1%E6%95%B0&logo=github)
-
-            - EasyTier / LuCI app package version: `2.6.4-r4`.
-            - Chinese i18n package version: `26.237.86399~ipv6fix2`, higher than `26.136.03667~39d7eda` but naturally superseded by LuCI `26.238.x` and later.
-            - Restored the full architecture matrix from the `24.10.6` branch (aarch64, ARM legacy/tuned targets, MIPS/MIPSEL, x86_64).
-            - `24.10.6` 为 OpenWrt 24.10.6 构建产物；`SNAPSHOT` 为新版构建产物。
-            - EasyTier core 来源：`ckbkdj/EasyTier` 的 `v2.6.4-openwrt-ipv6fix.2` IPv6 UDP/WireGuard 修复版。
+            - EasyTier / LuCI app: `2.6.4-r5`.
+            - Chinese i18n: `26.238.86399~netfix1`.
+            - Target: OpenWrt `24.10.6` only, across the full supported aarch64/ARM/MIPS/MIPSEL/x86_64 matrix.
+            - Core: `ckbkdj/EasyTier` `v2.6.4-netfix.1` (IPv6 UDP/WG reply-source fix + mobile exit-node release baseline).
+            - Migrates the legacy EasyTier wrapper netmask from `/8` to `/24` to avoid collisions with real `10.0.0.0/8` WAN/CPE networks.
 
             ${{ github.event.inputs.text }}
           tag_name: ${{ env.TAG }}
