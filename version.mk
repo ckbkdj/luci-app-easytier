@@ -5,12 +5,11 @@
 EASYTIER_VERSION=2.6.4
 
 # LuCI translation packages use PKG_PO_VERSION rather than PKG_VERSION.
-# Keep this LuCI-style value independent from the EasyTier core version.
-# 26.237 = 2026 day 237 (2026-08-25); 86399 makes this newer than
-# existing 26.136.x packages while allowing normal later-day LuCI updates
-# (26.238.x and newer) to supersede it naturally.
-EASYTIER_LUCI_PO_VERSION=26.237.86399~ipv6fix2
+# 26.238 = 2026 day 238 (2026-08-26). Keep this newer than the previous
+# 26.237 netfix package while allowing later LuCI daily revisions to supersede it.
+EASYTIER_LUCI_PO_VERSION=26.238.86399~netfix1
 
-# Patched EasyTier multi-architecture release containing the IPv6 UDP/WG fix.
+# Cross-platform EasyTier release containing both the IPv6 UDP/WG reply-source
+# fix and the mobile exit-node routing fix.
 EASYTIER_RELEASE_REPO=ckbkdj/EasyTier
-EASYTIER_RELEASE_TAG=v2.6.4-openwrt-ipv6fix.2
+EASYTIER_RELEASE_TAG=v2.6.4-netfix.1
